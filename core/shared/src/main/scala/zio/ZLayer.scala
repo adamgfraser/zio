@@ -297,6 +297,8 @@ sealed abstract class ZLayer[-RIn, +E, +ROut] { self =>
         Managed.succeed(_ => self.build)
       case ZLayer.Managed(self) =>
         Managed.succeed(_ => self)
+      case ZLayer.Recursive(f, z) =>
+        Managed.succeed(memoMap => memoMap.getOrElseMemoize(f(z)))
       case ZLayer.Suspend(self) =>
          ZManaged.succeed(memoMap => memoMap.getOrElseMemoize(self()))
       case ZLayer.ZipWith(self, that, f) =>
@@ -316,6 +318,7 @@ object ZLayer {
     success: ZLayer[ROut, E1, ROut1]
   ) extends ZLayer[RIn, E1, ROut1]
   private final case class Fresh[RIn, E, ROut](self: ZLayer[RIn, E, ROut])        extends ZLayer[RIn, E, ROut]
+  private final case class Recursive[RIn, E, ROut](f: ZLayer[RIn, E, ROut] => ZLayer[RIn, E, ROut], zero: ZLayer[RIn, E, ROut]) extends ZLayer[RIn, E, ROut]
   private final case class Managed[-RIn, +E, +ROut](self: ZManaged[RIn, E, ROut]) extends ZLayer[RIn, E, ROut]
   private final case class Suspend[-RIn, +E, +ROut](self: () => ZLayer[RIn, E, ROut]) extends ZLayer[RIn, E, ROut]
   private final case class ZipWith[-RIn, +E, ROut, ROut2, ROut3](
@@ -2178,6 +2181,9 @@ object ZLayer {
    */
   def identity[A]: ZLayer[A, Nothing, A] =
     ZLayer.requires[A]
+
+  def recursive[R, E, A: Tag](f: ZLayer[R, E, Has[A]] => ZLayer[R, E, Has[A]]): ZLayer[R, E, Has[A]] =
+    ZLayer.Recursive(f, ZLayer.succeed(null.asInstanceOf[A]))
 
   /**
    * Constructs a layer that passes along the specified environment as an

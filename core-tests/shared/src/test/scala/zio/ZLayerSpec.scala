@@ -61,6 +61,38 @@ object ZLayerSpec extends ZIOBaseSpec {
   def makeRef: UIO[Ref[Vector[String]]] =
     Ref.make(Vector.empty)
 
+  trait A {
+    def foo: String
+  }
+  trait B {
+    def bar: String
+  }
+  trait C {
+    def baz: String
+  }
+
+  final case class ALive(b: B) extends A {
+    def foo: String = "foo"
+  }
+  object ALive {
+    val layer: ZLayer[Has[B], Nothing, Has[A]] =
+      (ALive.apply _).toLayer
+  }
+  final case class BLive(c: C) extends B {
+    def bar: String = "bar"
+  }
+  object BLive {
+    val layer: ZLayer[Has[C], Nothing, Has[B]] =
+      (BLive.apply _).toLayer
+  }
+  final case class CLive(a: A) extends C {
+    def baz: String = "baz"
+  }
+  object CLive {
+    val layer: ZLayer[Has[A], Nothing, Has[C]] =
+      (CLive.apply _).toLayer
+  }
+
   def spec: ZSpec[Environment, Failure] =
     suite("ZLayerSpec")(
       testM("Size of >>> (1)") {
@@ -390,6 +422,11 @@ object ZLayerSpec extends ZIOBaseSpec {
           _     <- layer.build.useNow
           value <- ref.get
         } yield assert(value)(equalTo("bar"))
+      },
+      testM("recursive layers can be constructed") {
+        val cycle     = CLive.layer >>> BLive.layer >>> ALive.layer
+        val recursive = ZLayer.recursive[Any, Nothing, A](_ >>> cycle)
+        assertM(ZIO.service[A].map(_.foo).provideCustomLayer(recursive))(equalTo("foo"))
       }
     )
 }
